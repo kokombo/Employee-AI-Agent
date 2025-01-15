@@ -1,7 +1,7 @@
 import { OpenAIEmbeddings } from "@langchain/openai";
 import { ChatAnthropic } from "@langchain/anthropic";
 import {
-  AIMessage,
+  type AIMessage,
   type BaseMessage,
   HumanMessage,
 } from "@langchain/core/messages";
@@ -9,7 +9,7 @@ import {
   ChatPromptTemplate,
   MessagesPlaceholder,
 } from "@langchain/core/prompts";
-import { type StateGraph, Annotation } from "@langchain/langgraph";
+import { StateGraph, Annotation } from "@langchain/langgraph";
 import { tool } from "@langchain/core/tools";
 import { ToolNode } from "@langchain/langgraph/prebuilt";
 import { MongoDBSaver } from "@langchain/langgraph-checkpoint-mongodb";
@@ -78,7 +78,7 @@ export const callAgent = async (
     const prompt = ChatPromptTemplate.fromMessages([
       [
         "system",
-        `You are a helpful AI assistant, collaborating with other assistants. Use the provided tools to progress towards answering the question. If you are unable to full answer, that's ok, another assistant with different tools will help where you left off. Execute what you can to make progress. If you or any of the other assistants have the final answer of deliverable, prefix your response with FINAL ANSWER so that the team knows to stop. You have access to the following tools: (tool_names).\n(system_message)\nCurrent time: (time).`,
+        `You are a helpful AI assistant collaborating with other assistants. Use the provided tools to progress towards answering the question. If you are unable to full answer, that's ok, another assistant with different tools will help where you left off. Execute what you can to make progress. If you or any of the other assistants have the final answer or deliverable, prefix your response with FINAL ANSWER so that the team knows to stop. You have access to the following tools: (tool_names).\n(system_message)\nCurrent time: (time).`,
       ],
       new MessagesPlaceholder("messages"),
     ]);
@@ -89,5 +89,36 @@ export const callAgent = async (
       tool_names: tools.map((tool) => tool.name).join(", "),
       messages: state.messages,
     });
+
+    const result = await model.invoke(formattedPrompt);
+    return { messages: [result] };
   };
+
+  const shouldContinue = (state: typeof GraphState.State) => {
+    const messages = state.messages;
+    const lastMessage = messages[messages.length - 1] as AIMessage;
+
+    if (lastMessage.tool_calls?.length) {
+      return "tools";
+    }
+
+    return "__end__";
+  };
+
+  const workflow = new StateGraph(GraphState)
+    .addNode("agent", callModel)
+    .addNode("tools", toolNode)
+    .addEdge("__start__", "agent")
+    .addConditionalEdges("agent", shouldContinue)
+    .addEdge("tools", "agent");
+
+  const checkpointer = new MongoDBSaver({ client, dbName });
+  const app = workflow.compile({ checkpointer });
+
+  const finalState = await app.invoke(
+    { messages: [new HumanMessage(query)] },
+    { recursionLimit: 15, configurable: { thread_id } }
+  );
+
+  return finalState.messages[finalState.messages.length - 1].content;
 };
