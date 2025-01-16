@@ -31,5 +31,29 @@ const startServer = async () => {
         res.status(500).json({ error: "An error occurred" });
       }
     });
-  } catch (error) {}
+
+    app.post("/chat/:threadId", async (req: Request, res: Response) => {
+      const { threadId } = req.params;
+      const { message } = req.body;
+
+      try {
+        const response = await callAgent(client, message, threadId);
+        res.json(response);
+      } catch (error) {
+        console.error("Error in chat:", error);
+        res.status(500).json({ error: "An error occurred" });
+      }
+    });
+
+    const PORT = process.env.PORT || 3003;
+
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error("Error starting server:", error);
+    process.exit(1);
+  }
 };
+
+startServer();
