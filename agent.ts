@@ -66,7 +66,6 @@ export const callAgent = async (
 
   const tools = [employeeLookupTool];
 
-  //GraphState.State
   const toolNode = new ToolNode<typeof GraphState.State>(tools);
 
   const model = new ChatAnthropic({
