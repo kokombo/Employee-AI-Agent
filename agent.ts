@@ -120,5 +120,7 @@ export const callAgent = async (
     { recursionLimit: 15, configurable: { thread_id } }
   );
 
+  console.log(finalState.messages[finalState.messages.length - 1].content);
+
   return finalState.messages[finalState.messages.length - 1].content;
 };
